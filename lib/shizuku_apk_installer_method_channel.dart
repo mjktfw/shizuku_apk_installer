@@ -22,12 +22,13 @@ class MethodChannelShizukuApkInstaller extends ShizukuApkInstallerPlatform {
   }
 
   @override
-  Future<int?> installAPKs(List<String> apkFilesURIs, String fakeInstallSource) async {
+  Future<int?> installAPKs(List<String> apkFilesURIs, String fakeInstallSource, {String? packageName}) async {
     final success = await methodChannel.invokeMethod<int?>(
         'installAPKs',
         {
           'apkFilesURIs': apkFilesURIs,
-          'fakeInstallSource': fakeInstallSource
+          'fakeInstallSource': fakeInstallSource,
+          if (packageName != null) 'packageName': packageName
         }
     );
     return success;

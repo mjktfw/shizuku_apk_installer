@@ -198,8 +198,11 @@ class ShizukuWorker(private val appContext: Context) {
         }
     }
 
-    private val sessionParams: PackageInstaller.SessionParams by lazy {
+    private fun createSessionParams(packageName: String?): PackageInstaller.SessionParams {
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        // Android resolves the install volume during createSession, before any APK
+        // is written. Identifying an update here lets it retain the existing volume.
+        params.setAppPackageName(packageName)
         var flags = Refine.unsafeCast<PackageInstallerHidden.SessionParamsHidden>(params).installFlags
 
         flags = flags or PackageManagerHidden.INSTALL_ALLOW_TEST or PackageManagerHidden.INSTALL_REPLACE_EXISTING
@@ -208,28 +211,28 @@ class ShizukuWorker(private val appContext: Context) {
         }
 
         Refine.unsafeCast<PackageInstallerHidden.SessionParamsHidden>(params).installFlags = flags
-        params
+        return params
     }
 
-    private fun createPackageInstallerSession(): PackageInstaller.Session {
-        val sessionId = packageInstaller.createSession(sessionParams)
+    private fun createPackageInstallerSession(packageName: String?): PackageInstaller.Session {
+        val sessionId = packageInstaller.createSession(createSessionParams(packageName))
         val iSession = IPackageInstallerSession.Stub.asInterface(
             iPackageInstaller.openSession(sessionId).asShizukuBinder())
         return Refine.unsafeCast(PackageInstallerHidden.SessionHidden(iSession))
     }
 
-    private fun createPackageInstallerSessionD(): PackageInstaller.Session {
-        val sessionId = packageInstallerD.createSession(sessionParams)
+    private fun createPackageInstallerSessionD(packageName: String?): PackageInstaller.Session {
+        val sessionId = packageInstallerD.createSession(createSessionParams(packageName))
         val iSession = IPackageInstallerSession.Stub.asInterface(
             iPackageInstallerD.openSession(sessionId).asDhizukuBinder())
         return Refine.unsafeCast(PackageInstallerHidden.SessionHidden(iSession))
     }
 
-    private fun createPackageInstallerSessionUniversal(): PackageInstaller.Session {
+    private fun createPackageInstallerSessionUniversal(packageName: String?): PackageInstaller.Session {
         return if (dInitSucceeded)
-            createPackageInstallerSessionD()
+            createPackageInstallerSessionD(packageName)
         else
-            createPackageInstallerSession()
+            createPackageInstallerSession(packageName)
     }
 
     /**
@@ -237,13 +240,13 @@ class ShizukuWorker(private val appContext: Context) {
      * The permission must have already been checked!
      * @param fakeInstallSource set install source app package name
      */
-    suspend fun installAPKs(apkURIs: List<String>, fakeInstallSource: String = ""): Int {
+    suspend fun installAPKs(apkURIs: List<String>, fakeInstallSource: String = "", packageName: String? = null): Int {
         if (!dInitSucceeded) isRoot = Shizuku.getUid() == 0
         this.fakeInstallSource = fakeInstallSource
         var status = PackageInstaller.STATUS_FAILURE
         withContext(Dispatchers.IO) {
             runCatching {
-                createPackageInstallerSessionUniversal().use { session ->
+                createPackageInstallerSessionUniversal(packageName).use { session ->
                     apkURIs.forEachIndexed { index, uriString ->
                         val uri = uriString.toUri()
                         val stream = (if (dInitSucceeded)
